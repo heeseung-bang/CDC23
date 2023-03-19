@@ -1,4 +1,4 @@
-function feasible = isFeasible(vf,n)
+function feasible = isFeasible(tf,vf,n)
     global CAVs prev_CAV th delta;
     global u_min u_max v_min v_max;
     
@@ -10,7 +10,7 @@ function feasible = isFeasible(vf,n)
         return;
     end
     
-    tf = CAVs{n}.tf;
+%     vf = CAVs{n}.vf;
     v0 = CAVs{n}.v0;
     sf = CAVs{n}.geometry.length;
     vec = ([3*tf^2,2*tf; tf^3,tf^2])\[vf-v0; sf-v0*tf];

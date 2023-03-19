@@ -7,7 +7,7 @@ X = sol.x;
 % v = 9 % this should be the same as one in trip_generation.m
 
 % CAVs structure
-cav_fields = {'t0','v0','tf','vf','vc','tc','phis','path','exited','geometry','time'};
+cav_fields = {'t0','v0','tf','vf','tc','sc','phis','path','exited','geometry','time'};
 cav_cell = cell(length(cav_fields),1);
 cav_info = cell2struct(cav_cell,cav_fields);
 clear("cav_fields","cav_cell");
@@ -47,32 +47,117 @@ for n = 1:N
     % Estimate travel time and Fix arrival time
     flow_in = sum(X(:,8*(v-1)+trip(n,2)));
     flow_out = sum(X(:,8*(v-1)+trip(n,3)));
-    bpr_in = t0*(1+0.15*(flow_in/gamma)^4);
-    bpr_out = t0*(1+0.15*(flow_out/gamma)^4);
+    bpr_in = BPR_t0*(1+0.15*(flow_in/gamma)^4);
+    bpr_out = BPR_t0*(1+0.15*(flow_out/gamma)^4);
     
     tf1 = trip(n,1) + bpr_in + bpr_out;
-    ft2 = prev_tf(trip(n,3)-4) + 1/flow_out;
+    tf2 = prev_tf(trip(n,3)-4) + 1/flow_out;
     CAVs{n}.tf = max(tf1,tf2) - CAVs{n}.t0;
     prev_tf(trip(n,3)-4) = CAVs{n}.tf + CAVs{n}.t0;
-    
-    
+    CAVs{n}.vf = L/bpr_out;    
+%     v_avg = (CAVs{n}.v0 + CAVs{n}.vf)/2;
+%     CAVs{n}.vf = 20;
+    v_avg = 22;
     
     %%%%%%%%%%%%%%%%%%%%%% START COORDINATION %%%%%%%%%%%%%%%%%%%%%%
     fprintf('=========================\n');
     fprintf('CAV %d\n',n);
     fprintf('Path: %d\n',CAVs{n}.path);
     fprintf('-------------------------\n');
+    
+    v0 = CAVs{n}.v0;
+    sf = CAVs{n}.geometry.length;
+    vf = CAVs{n}.vf;
+    t0 = CAVs{n}.t0;
+    tf = CAVs{n}.tf;
+    
         
-    new_coordination(n);
+    %%%%%%% CHECK SAFETY for single trajectory %%%%%%%
+    cp = 0;
+    sc = sf; vc = vf; tc = tf;
+    if isFeasible(n,sc,vc,tc,0)
+        
+        CAVs{n}.tc = tc;
+        CAVs{n}.sc = sc;
+                
+        vec = [3*tc^2,2*tc;tc^3,tc^2]\[vc-v0;sc-v0*tc];
+        phi_n1 = [vec(1), vec(2), v0];
+        phi_n2 = [0,0,0];
+        
+        CAVs{n}.phis = [phi_n1;phi_n2];
+        CAVs{n}.time = getTime(n);
+    else
+        %%%%%%% CHECK SAFETY for two trajectories %%%%%%%
+        CPs = CAVs{n}.geometry.adjacency;
+        found = false;
+        for p=1:(n-1)
+            if CAVs{p}.exited
+                continue;
+            end
+            for idx = 1:length(CPs)
+                cp = CPs(idx);
+                if CAVs{p}.path ~= cp
+                    continue;
+                end
+                if p == 11
+                    test = 1;
+                end
+                % select edge cases and check safety
+                dt = CAVs{n}.t0 - CAVs{p}.t0;
+                n_idx = find(CAVs{n}.geometry.adjacency == cp);
+                p_idx = find(CAVs{p}.geometry.adjacency == CAVs{n}.path);
+                sc = CAVs{n}.geometry.conflictDist(n_idx);
+                vc = v_avg;
+                
+                %%%%%%% IF I want to change vc, make loop HERE!!
+                
+                % Check left edge case
+                tc = CAVs{p}.time(p_idx)-dt-th;                
+                if isFeasible(n,sc,vc,tc,p)
+                    found = true;
+                    
+                    CAVs{n}.tc = tc;
+                    CAVs{n}.sc = sc;
+                    
+                    vec = [3*tc^2,2*tc;tc^3,tc^2]\[vc-v0;sc-v0*tc];
+                    phi_n1 = [vec(1), vec(2), v0];
+
+                    vec = [3*(tf-tc)^2,2*(tf-tc);(tf-tc)^3,(tf-tc)^2]\[vf-vc;sf-vc*(tf-tc)];
+                    phi_n2 = [vec(1), vec(2), vc];
+                    
+                    CAVs{n}.phis = [phi_n1;phi_n2];
+                    CAVs{n}.time = getTime(n);
+                    break;
+                end
+                % Check right edge case
+                tc = CAVs{p}.time(p_idx)-dt+th;  
+                if isFeasible(n,sc,vc,tc,p)
+                    found = true;
+                    CAVs{n}.tc = tc;
+                    CAVs{n}.sc = sc;
+                    
+                    vec = [3*tc^2,2*tc;tc^3,tc^2]\[vc-v0;sc-v0*tc];
+                    phi_n1 = [vec(1), vec(2), v0];
+
+                    vec = [3*(tf-tc)^2,2*(tf-tc);(tf-tc)^3,(tf-tc)^2]\[vf-vc;sf-vc*(tf-tc)];
+                    phi_n2 = [vec(1), vec(2), vc];
+                    
+                    CAVs{n}.phis = [phi_n1;phi_n2];
+                    CAVs{n}.time = getTime(n);
+                    break;
+                end
+            end
+            if found
+                break;
+            end
+        end
+    end
+        
        
     if sum(CAVs{n}.phis) == 0
         fprintf(2','Infeasible solution!!!!!\n');
     else
-        fprintf('CAV %d\n',n);
-        fprintf('vc: %.2f\n',CAVs{n}.vc);
-        fprintf('tc: %.2f\n',CAVs{n}.tc);
-        % based on vc,tc,phis -> save time ...
-        
+        fprintf('cp: %d\n',cp); % if 0 -> single trajectory
     end
     
 end
