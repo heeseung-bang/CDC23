@@ -18,11 +18,11 @@ v_max = 25;
 u_max = 5;
 u_min = -5;
 
-delta = 6;  % safety distance [m] for rear-end safety
-th = 2;     % Time headway [s] for lateral safety
+delta = 5;  % safety distance [m] for rear-end safety
+th = 1.5;     % Time headway [s] for lateral safety
 
 N = length(trip);
-% V0 = trip(:,4).*(1.5*ones([N,1])-1*rand([N,1]));
+V0 = trip(:,4); %.*(1*ones([N,1])-1*rand([N,1]));
 path = [0,1,2,3;6,0,4,5;8,9,0,7;10,11,12,0]; % path(inDir,outDir) -> 1~12
 
 CAVs = cell(N,1);
@@ -55,9 +55,10 @@ for n = 1:N
     CAVs{n}.tf = max(tf1,tf2) - CAVs{n}.t0;
     prev_tf(trip(n,3)-4) = CAVs{n}.tf + CAVs{n}.t0;
     CAVs{n}.vf = L/bpr_out;    
-%     v_avg = (CAVs{n}.v0 + CAVs{n}.vf)/2;
-%     CAVs{n}.vf = 20;
-    v_avg = 22;
+    v_avg = (CAVs{n}.v0 + CAVs{n}.vf)/2;
+%     v_avg = CAVs{n}.vf;
+%     CAVs{n}.vf = 22;
+%     v_avg = 1;
     
     %%%%%%%%%%%%%%%%%%%%%% START COORDINATION %%%%%%%%%%%%%%%%%%%%%%
     fprintf('=========================\n');
@@ -99,7 +100,7 @@ for n = 1:N
                 if CAVs{p}.path ~= cp
                     continue;
                 end
-                if p == 11
+                if n == 11
                     test = 1;
                 end
                 % select edge cases and check safety
@@ -122,7 +123,7 @@ for n = 1:N
                     vec = [3*tc^2,2*tc;tc^3,tc^2]\[vc-v0;sc-v0*tc];
                     phi_n1 = [vec(1), vec(2), v0];
 
-                    vec = [3*(tf-tc)^2,2*(tf-tc);(tf-tc)^3,(tf-tc)^2]\[vf-vc;sf-vc*(tf-tc)];
+                    vec = [3*(tf-tc)^2,2*(tf-tc);(tf-tc)^3,(tf-tc)^2]\[vf-vc;(sf-sc)-vc*(tf-tc)];
                     phi_n2 = [vec(1), vec(2), vc];
                     
                     CAVs{n}.phis = [phi_n1;phi_n2];
@@ -130,6 +131,9 @@ for n = 1:N
                     break;
                 end
                 % Check right edge case
+                if n == 8 && p == 7
+                    test = 1;
+                end
                 tc = CAVs{p}.time(p_idx)-dt+th;  
                 if isFeasible(n,sc,vc,tc,p)
                     found = true;
@@ -139,7 +143,7 @@ for n = 1:N
                     vec = [3*tc^2,2*tc;tc^3,tc^2]\[vc-v0;sc-v0*tc];
                     phi_n1 = [vec(1), vec(2), v0];
 
-                    vec = [3*(tf-tc)^2,2*(tf-tc);(tf-tc)^3,(tf-tc)^2]\[vf-vc;sf-vc*(tf-tc)];
+                    vec = [3*(tf-tc)^2,2*(tf-tc);(tf-tc)^3,(tf-tc)^2]\[vf-vc;(sf-sc)-vc*(tf-tc)];
                     phi_n2 = [vec(1), vec(2), vc];
                     
                     CAVs{n}.phis = [phi_n1;phi_n2];
@@ -155,7 +159,38 @@ for n = 1:N
         
        
     if sum(CAVs{n}.phis) == 0
-        fprintf(2','Infeasible solution!!!!!\n');
+        
+        % FIND the preceding CAV
+        sc = 0; vc = 0; tc = 0;
+        for p = (n-1):-1:1
+            if CAVs{p}.path == CAVs{n}.path || ~isempty(find(CAVs{n}.geometry.adjacencySplit == CAVs{p}.path,1))
+%                 [sc,vc,tc] = findJunction(n,p);
+                sc = CAVs{p}.sc;
+                vc = v_avg;
+                dt = CAVs{n}.t0 - CAVs{p}.t0;
+                tc = CAVs{p}.tc-dt;
+                if sc+vc+tc ~= 0
+                    break;
+                end
+            end
+        end
+        if sc+vc+tc == 0
+            fprintf(2','Infeasible solution!!!!!\n');
+        else
+            fprintf('Selected safe trajectory...\n');
+            sc = sc - delta;
+            CAVs{n}.tc = tc;
+            CAVs{n}.sc = sc;
+
+            vec = [3*tc^2,2*tc;tc^3,tc^2]\[vc-v0;sc-v0*tc];
+            phi_n1 = [vec(1), vec(2), v0];
+
+            vec = [3*(tf-tc)^2,2*(tf-tc);(tf-tc)^3,(tf-tc)^2]\[vf-vc;(sf-sc)-vc*(tf-tc)];
+            phi_n2 = [vec(1), vec(2), vc];
+
+            CAVs{n}.phis = [phi_n1;phi_n2];
+            CAVs{n}.time = getTime(n);
+        end
     else
         fprintf('cp: %d\n',cp); % if 0 -> single trajectory
     end
