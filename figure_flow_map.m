@@ -62,7 +62,7 @@ end
 for r = 1:nR
     for dir = 1:8
         p=nsidedpoly(1000,'Center',[Rx(r)+dev(dir,2),Ry(r)+dev(dir,4)],'Radius',1);
-        plot(p,'FaceColor','w','FaceAlpha',1);
+        plot(p,'FaceColor','w','FaceAlpha',1,'LineWidth',1.5);
     end
 end
 for r = 1:nR
@@ -79,13 +79,13 @@ for r = 1:nR
             end
         end
         if origin || destination
-            plot(p,'FaceColor','k','FaceAlpha',1);
+            plot(p,'FaceColor','k','FaceAlpha',1,'LineWidth',1.5);
         end
     end
 end
 
 %%
-for m = 15:17
+for m = 5:25
     figure(100+m);
     cm = colormap(myColorMap);
     hold on;
